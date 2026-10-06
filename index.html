@@ -52,10 +52,10 @@
             <span id="location-badge">街</span>
             <span id="season-badge">春</span>
           </div>
-          <div class="controls-tip">移動: WASD / 矢印　・　アクション: E　・　セーブ: S</div>
+          <div class="controls-tip">移動: WASD / 矢印　・　アクション: E　・　セーブ: S　・　カメラ: マウスドラッグ</div>
         </div>
 
-        <canvas id="gameCanvas" width="980" height="620"></canvas>
+        <div id="gameRoot"></div>
 
         <div class="action-bar">
           <button data-action="farm">農業</button>
@@ -78,6 +78,7 @@
       </aside>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script src="game.js"></script>
   </body>
 </html>

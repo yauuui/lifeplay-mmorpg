@@ -175,16 +175,25 @@ body {
   font-size: 0.76rem;
   color: var(--muted);
   letter-spacing: 0.04em;
+  max-width: 60%;
+  text-align: right;
 }
 
-#gameCanvas {
+#gameRoot {
+  position: relative;
   width: 100%;
   height: 620px;
-  display: block;
-  background: linear-gradient(180deg, #0d2744, #132e2f 35%, #0c1e25 100%);
-  border: 1px solid var(--border);
   border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
   box-shadow: inset 0 0 30px rgba(104, 240, 255, 0.08);
+  background: linear-gradient(180deg, #0d2744, #132e2f 35%, #0c1e25 100%);
+}
+
+#gameRoot canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .action-bar {
@@ -242,7 +251,12 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  #gameCanvas {
+  #gameRoot {
     height: 500px;
+  }
+
+  .controls-tip {
+    max-width: 100%;
+    text-align: left;
   }
 }
