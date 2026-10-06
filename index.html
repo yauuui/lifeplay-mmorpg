@@ -7,9 +7,71 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar left-panel">
-        <div class="panel-block">
+    <div id="startScreen" class="screen active">
+      <div class="screen-panel">
+        <div class="screen-header">
+          <span class="eyebrow">OPEN WORLD LIFE MMO</span>
+          <h1>LifePlay</h1>
+        </div>
+
+        <div class="create-form">
+          <label>
+            <span>名前</span>
+            <input id="playerNameInput" type="text" maxlength="12" value="ユウ" />
+          </label>
+
+          <label>
+            <span>職業</span>
+            <select id="jobSelect">
+              <option value="自由人">自由人</option>
+              <option value="農家">農家</option>
+              <option value="漁師">漁師</option>
+              <option value="冒険者">冒険者</option>
+              <option value="商人">商人</option>
+            </select>
+          </label>
+
+          <label>
+            <span>見た目</span>
+            <select id="skinSelect">
+              <option value="#68f0ff">空色</option>
+              <option value="#ff9bf2">ピンク</option>
+              <option value="#ffd166">金色</option>
+              <option value="#8eff9f">草色</option>
+              <option value="#a7d8ff">青白</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="start-buttons">
+          <button id="startButton" class="primary">ゲーム開始</button>
+          <button id="loadButton" class="secondary">続きから</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="gameShell" class="game-shell hidden">
+      <div class="top-hud">
+        <div class="hud-left">
+          <div class="chip">街</div>
+          <div class="chip">春</div>
+        </div>
+        <div class="hud-center">
+          <div class="mini-map-wrap">
+            <canvas id="miniMap" width="170" height="110"></canvas>
+          </div>
+        </div>
+        <div class="hud-right">
+          <span>WASD 移動</span>
+          <span>E 会話</span>
+          <span>S 保存</span>
+        </div>
+      </div>
+
+      <div id="gameRoot"></div>
+
+      <div class="status-panel">
+        <div class="panel-block slim">
           <h2>ステータス</h2>
           <div class="stat-grid">
             <div><span>名前</span><strong id="player-name">ユウ</strong></div>
@@ -24,7 +86,7 @@
           </div>
         </div>
 
-        <div class="panel-block">
+        <div class="panel-block slim">
           <h2>スキル</h2>
           <div class="skill-list">
             <div><span>農業</span><strong id="skill-farming">1</strong></div>
@@ -34,48 +96,34 @@
             <div><span>仕事</span><strong id="skill-work">1</strong></div>
           </div>
         </div>
+      </div>
 
-        <div class="panel-block">
-          <h2>インベントリ</h2>
-          <div class="inventory" id="inventory"></div>
-        </div>
+      <div class="inventory-panel panel-block slim">
+        <h2>インベントリ</h2>
+        <div class="inventory" id="inventory"></div>
+      </div>
 
-        <div class="panel-block">
-          <h2>関係</h2>
-          <div id="relationship-list" class="relationship-list"></div>
-        </div>
-      </aside>
+      <div class="relationship-panel panel-block slim">
+        <h2>関係</h2>
+        <div id="relationship-list" class="relationship-list"></div>
+      </div>
 
-      <main class="center-panel">
-        <div class="hud-top">
-          <div class="mini-badges">
-            <span id="location-badge">街</span>
-            <span id="season-badge">春</span>
-          </div>
-          <div class="controls-tip">移動: WASD / 矢印 ・ アクション: E ・ セーブ: S ・ カメラ: マウスドラッグ</div>
-        </div>
+      <div class="log-panel panel-block">
+        <h2>ログ</h2>
+        <div id="log-panel" class="log-list"></div>
+      </div>
 
-        <div id="gameRoot"></div>
-
-        <div class="action-bar">
-          <button data-action="farm">農業</button>
-          <button data-action="fish">釣り</button>
-          <button data-action="hunt">狩猟</button>
-          <button data-action="work">仕事</button>
-          <button data-action="talk">会話</button>
-          <button data-action="court">裁判</button>
-          <button data-action="adventure">冒険</button>
-          <button data-action="rest">休む</button>
-          <button data-action="save">保存</button>
-        </div>
-      </main>
-
-      <aside class="sidebar right-panel">
-        <div class="panel-block log-block">
-          <h2>ログ</h2>
-          <div id="log-panel" class="log-panel"></div>
-        </div>
-      </aside>
+      <div class="action-bar">
+        <button data-action="farm">農業</button>
+        <button data-action="fish">釣り</button>
+        <button data-action="hunt">狩猟</button>
+        <button data-action="work">仕事</button>
+        <button data-action="talk">会話</button>
+        <button data-action="court">裁判</button>
+        <button data-action="adventure">冒険</button>
+        <button data-action="rest">休む</button>
+        <button data-action="save">保存</button>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
