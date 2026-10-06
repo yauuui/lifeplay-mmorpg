@@ -44,6 +44,7 @@ const defaultPlayer = () => ({
   marriedTo: null,
   selectedTarget: null,
   lastNpcId: null,
+  rotationY: 0,
 });
 
 const npcTemplate = [
@@ -93,11 +94,10 @@ const ui = {
   },
 };
 
-const keys = {};
 const logs = state.logs || ["村が眠る前に、自由に生きる準備を始めよう。"];
 const gameRoot = document.getElementById("gameRoot");
+const keys = {};
 
-// Three.js セットアップ
 let scene, camera, renderer, worldGroup, playerMesh;
 const npcMeshes = new Map();
 let cameraYaw = 0;
@@ -105,4 +105,646 @@ let cameraPitch = 0.9;
 let pointerDown = false;
 let lastTime = 0;
 
-function clamp(value, min, max) {\n  return Math.min(Math.max(value, min), max);\n}\n\nfunction formatTime(totalMinutes) {\n  const hour = Math.floor(totalMinutes / 60) % 24;\n  const minute = totalMinutes % 60;\n  return `${String(hour).padStart(2, \"0\")}:${String(minute).padStart(2, \"0\")}`;\n}\n\nfunction getSeasonFromDay(day) {\n  return seasonNames[(day - 1) % 4];\n}\n\nfunction getLocationName(x, y) {\n  for (const zone of Object.values(zoneDefs)) {\n    if (x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h) {\n      return zone.label;\n    }\n  }\n  return \"野原\";\n}\n\nfunction getNearestNpc() {\n  let nearest = null;\n  let nearestDist = Infinity;\n\n  for (const npc of state.npcs) {\n    const dx = npc.x - state.player.x;\n    const dy = npc.y - state.player.y;\n    const dist = Math.hypot(dx, dy);\n    if (dist < nearestDist && dist < 80) {\n      nearest = npc;\n      nearestDist = dist;\n    }\n  }\n\n  return nearest;\n}\n\nfunction addLog(message) {\n  logs.unshift(message);\n  if (logs.length > 12) logs.pop();\n  renderLog();\n}\n\nfunction renderLog() {\n  ui.log.innerHTML = logs\n    .slice(0, 12)\n    .map((entry) => `<div class=\"log-entry\">${entry}</div>`)\n    .join(\"\");\n}\n\nfunction updateUI() {\n  ui.playerName.textContent = state.player.name;\n  ui.playerJob.textContent = state.player.job;\n  ui.day.textContent = `${state.player.day}日目`;\n  ui.time.textContent = formatTime(state.player.time);\n  ui.money.textContent = `${state.player.money}`;\n  ui.hp.textContent = `${Math.round(state.player.health)}`;\n  ui.energy.textContent = `${Math.round(state.player.energy)}`;\n  ui.hunger.textContent = `${Math.round(state.player.hunger)}`;\n  ui.reputation.textContent = `${state.player.reputation}`;\n\n  ui.skill.farming.textContent = state.player.skill.farming;\n  ui.skill.fishing.textContent = state.player.skill.fishing;\n  ui.skill.combat.textContent = state.player.skill.combat;\n  ui.skill.social.textContent = state.player.skill.social;\n  ui.skill.work.textContent = state.player.skill.work;\n\n  const inventoryHtml = Object.entries(itemLabels)\n    .map(([key, label]) => `\n      <div class=\"inventory-item\">\n        <span class=\"label\">${label}</span>\n        <strong>${state.player.inventory[key] || 0}</strong>\n      </div>\n    `)\n    .join(\"\");\n  ui.inventory.innerHTML = inventoryHtml;\n\n  const relationships = Object.entries(state.player.relationship)\n    .sort((a, b) => b[1] - a[1])\n    .map(([name, affection]) => {\n      const npc = state.npcs.find((n) => n.name === name);\n      const tag = npc && npc.role === \"romance\" ? \"恋人\" : \"友達\";\n      return `\n        <div class=\"relationship-row\">\n          <span>${name}</span>\n          <span class=\"affinity\">${affection} ${tag}</span>\n        </div>\n      `;\n    })\n    .join(\"\");\n\n  ui.relationshipList.innerHTML = relationships || '<div class=\"relationship-row\"><span>まだ誰もいません</span></div>';\n\n  const currentLocation = getLocationName(state.player.x, state.player.y);\n  ui.locationBadge.textContent = currentLocation;\n  ui.seasonBadge.textContent = getSeasonFromDay(state.player.day);\n}\n\nfunction gainSkill(skillName, amount = 1) {\n  state.player.skill[skillName] = (state.player.skill[skillName] || 1) + amount;\n}\n\nfunction influencePlayerStats(energyCost, hungerCost, healthDelta, moneyDelta) {\n  state.player.energy = clamp(state.player.energy - energyCost, 0, 100);\n  state.player.hunger = clamp(state.player.hunger - hungerCost, 0, 100);\n  state.player.health = clamp(state.player.health + healthDelta, 0, 100);\n  state.player.money = Math.max(0, state.player.money + moneyDelta);\n}\n\nfunction advanceTime(dt) {\n  state.player.time += dt * 60;\n  if (state.player.time >= 24 * 60) {\n    state.player.time -= 24 * 60;\n    state.player.day += 1;\n    addLog(\"<strong>新しい日</strong> が始まった。\");\n  }\n\n  state.player.hunger = clamp(state.player.hunger - dt * 2.2, 0, 100);\n  state.player.energy = clamp(state.player.energy - dt * 1.5, 0, 100);\n\n  if (state.player.hunger <= 10) {\n    state.player.health = clamp(state.player.health - dt * 5, 0, 100);\n  }\n  if (state.player.energy <= 10) {\n    state.player.health = clamp(state.player.health - dt * 2, 0, 100);\n  }\n\n  if (state.player.health <= 0) {\n    state.player.health = 100;\n    state.player.energy = 60;\n    state.player.hunger = 80;\n    state.player.money = Math.max(0, state.player.money - 30);\n    addLog(\"<strong>体調が悪くなった。</strong> 宿で休んで回復した。\");\n  }\n}\n\nfunction createCharacterMesh(color, isPlayer = false) {\n  const group = new THREE.Group();\n\n  const body = new THREE.Mesh(\n    new THREE.CapsuleGeometry(0.9, 1.8, 4, 10),\n    new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.2 })\n  );\n  body.position.y = 1.7;\n  group.add(body);\n\n  const head = new THREE.Mesh(\n    new THREE.SphereGeometry(0.7, 16, 16),\n    new THREE.MeshStandardMaterial({ color: 0xf5d7b4, roughness: 0.9 })\n  );\n  head.position.y = 3.2;\n  group.add(head);\n\n  const shadow = new THREE.Mesh(\n    new THREE.CircleGeometry(1.5, 20),\n    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2 })\n  );\n  shadow.rotation.x = -Math.PI / 2;\n  shadow.position.y = 0.05;\n  group.add(shadow);\n\n  if (isPlayer) {\n    group.userData.isPlayer = true;\n  }\n\n  return group;\n}\n\nfunction createWorldScene() {\n  scene = new THREE.Scene();\n  scene.background = new THREE.Color(0x7ec7ff);\n  scene.fog = new THREE.Fog(0x8ec5ff, 350, 2200);\n\n  camera = new THREE.PerspectiveCamera(60, gameRoot.clientWidth / gameRoot.clientHeight, 0.1, 3000);\n  camera.position.set(30, 18, 30);\n\n  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });\n  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));\n  renderer.setSize(gameRoot.clientWidth, gameRoot.clientHeight);\n  gameRoot.innerHTML = \"\";\n  gameRoot.appendChild(renderer.domElement);\n\n  worldGroup = new THREE.Group();\n  scene.add(worldGroup);\n\n  const ambient = new THREE.HemisphereLight(0xdff5ff, 0x234b39, 1.4);\n  scene.add(ambient);\n\n  const sunlight = new THREE.DirectionalLight(0xffffff, 1.2);\n  sunlight.position.set(600, 800, 350);\n  scene.add(sunlight);\n\n  const ground = new THREE.Mesh(\n    new THREE.PlaneGeometry(5000, 5000),\n    new THREE.MeshStandardMaterial({ color: 0x5bbd63, roughness: 1 })\n  );\n  ground.rotation.x = -Math.PI / 2;\n  ground.position.y = 0;\n  worldGroup.add(ground);\n\n  const townFloor = new THREE.Mesh(\n    new THREE.BoxGeometry(420, 1, 350),\n    new THREE.MeshStandardMaterial({ color: 0x9bb5d1, roughness: 0.95 })\n  );\n  townFloor.position.set(zoneDefs.town.x + zoneDefs.town.w / 2, 0.5, zoneDefs.town.y + zoneDefs.town.h / 2);\n  worldGroup.add(townFloor);\n\n  const farmFloor = new THREE.Mesh(\n    new THREE.BoxGeometry(520, 1, 340),\n    new THREE.MeshStandardMaterial({ color: 0xc7d96a, roughness: 1 })\n  );\n  farmFloor.position.set(zoneDefs.farm.x + zoneDefs.farm.w / 2, 0.5, zoneDefs.farm.y + zoneDefs.farm.h / 2);\n  worldGroup.add(farmFloor);\n\n  const forestFloor = new THREE.Mesh(\n    new THREE.BoxGeometry(620, 1, 620),\n    new THREE.MeshStandardMaterial({ color: 0x2d7647, roughness: 1 })\n  );\n  forestFloor.position.set(zoneDefs.forest.x + zoneDefs.forest.w / 2, 0.5, zoneDefs.forest.y + zoneDefs.forest.h / 2);\n  worldGroup.add(forestFloor);\n\n  const beachFloor = new THREE.Mesh(\n    new THREE.BoxGeometry(670, 1, 420),\n    new THREE.MeshStandardMaterial({ color: 0x65c1d7, roughness: 0.7 })\n  );\n  beachFloor.position.set(zoneDefs.beach.x + zoneDefs.beach.w / 2, 0.3, zoneDefs.beach.y + zoneDefs.beach.h / 2);\n  worldGroup.add(beachFloor);\n\n  const ruinsFloor = new THREE.Mesh(\n    new THREE.BoxGeometry(500, 1, 500),\n    new THREE.MeshStandardMaterial({ color: 0x6e5d59, roughness: 1 })\n  );\n  ruinsFloor.position.set(zoneDefs.ruins.x + zoneDefs.ruins.w / 2, 0.5, zoneDefs.ruins.y + zoneDefs.ruins.h / 2);\n  worldGroup.add(ruinsFloor);\n\n  // プレイヤーメッシュ\n  playerMesh = createCharacterMesh(0x68f0ff, true);\n  playerMesh.position.set(state.player.x, 0, state.player.y);\n  worldGroup.add(playerMesh);\n\n  // NPC メッシュ\n  for (const npc of state.npcs) {\n    const visual = createCharacterMesh(npc.color, false);\n    visual.position.set(npc.x, 0, npc.y);\n    worldGroup.add(visual);\n    npcMeshes.set(npc.id, visual);\n  }\n}\n\nfunction saveGame() {\n  localStorage.setItem(\n    SAVE_KEY,\n    JSON.stringify({\n      player: state.player,\n      npcs: state.npcs,\n      logs,\n    })\n  );\n}\n\nfunction loadState() {\n  const saved = localStorage.getItem(SAVE_KEY);\n  if (!saved) {\n    const player = defaultPlayer();\n    return {\n      player,\n      npcs: npcTemplate.map((n) => ({ ...n, affection: n.affinity })),\n      logs: [\"新しい冒険が始まった。自由に生きろ。\"],\n    };\n  }\n\n  try {\n    const parsed = JSON.parse(saved);\n    return {\n      player: { ...defaultPlayer(), ...parsed.player },\n      npcs: parsed.npcs || npcTemplate.map((n) => ({ ...n, affection: n.affinity })),\n      logs: parsed.logs || [\"新しい冒険が始まった。自由に生きろ。\"],\n    };\n  } catch (error) {\n    return {\n      player: defaultPlayer(),\n      npcs: npcTemplate.map((n) => ({ ...n, affection: n.affinity })),\n      logs: [\"新しい冒険が始まった。自由に生きろ。\"],\n    };\n  }\n}\n\nfunction update3DState() {\n  if (!playerMesh || !scene) return;\n\n  playerMesh.position.set(state.player.x, 0, state.player.y);\n\n  for (const npc of state.npcs) {\n    const mesh = npcMeshes.get(npc.id);\n    if (!mesh) continue;\n    mesh.position.set(npc.x, 0, npc.y);\n  }\n}\n\nfunction updateCamera() {\n  if (!camera) return;\n  const target = new THREE.Vector3(state.player.x, 1.5, state.player.y);\n  const radius = 9;\n  const offsetX = Math.sin(cameraYaw + Math.PI) * radius;\n  const offsetZ = Math.cos(cameraYaw + Math.PI) * radius;\n  const offsetY = 5 + Math.sin(cameraPitch) * 5;\n\n  const desiredCameraPos = new THREE.Vector3(\n    target.x + offsetX,\n    offsetY,\n    target.z + offsetZ\n  );\n\n  camera.position.lerp(desiredCameraPos, 0.08);\n  camera.lookAt(target.x, target.y + 1.6, target.z);\n}\n\nfunction applyMovement(dt) {\n  let moveX = 0;\n  let moveY = 0;\n\n  if (keys.ArrowLeft || keys.a || keys.KeyA) moveX -= 1;\n  if (keys.ArrowRight || keys.d || keys.KeyD) moveX += 1;\n  if (keys.ArrowUp || keys.w || keys.KeyW) moveY -= 1;\n  if (keys.ArrowDown || keys.s || keys.KeyS) moveY += 1;\n\n  if (moveX !== 0 || moveY !== 0) {\n    const length = Math.hypot(moveX, moveY) || 1;\n    const dirX = (moveX / length) * state.player.speed * dt;\n    const dirY = (moveY / length) * state.player.speed * dt;\n\n    state.player.x = clamp(state.player.x + dirX, 40, world.width - 40);\n    state.player.y = clamp(state.player.y + dirY, 40, world.height - 40);\n    cameraYaw = Math.atan2(dirX, dirY);\n  }\n}\n\nfunction handlePlayerAction(action) {\n  const currentLocation = getLocationName(state.player.x, state.player.y);\n  const nearestNpc = getNearestNpc();\n\n  if (action === \"save\") {\n    saveGame();\n    addLog(\"<strong>保存</strong>した。次に続けられる。\");\n    return;\n  }\n\n  if (action === \"rest\") {\n    if (currentLocation === \"街\" || currentLocation === \"役所\" || currentLocation === \"宿\") {\n      state.player.health = clamp(state.player.health + 30, 0, 100);\n      state.player.energy = clamp(state.player.energy + 45, 0, 100);\n      state.player.hunger = clamp(state.player.hunger + 25, 0, 100);\n      state.player.money = Math.max(0, state.player.money - 10);\n      addLog(\"宿で休んだ。体力と気力が回復した。\");\n    } else {\n      addLog(\"ここでは休めない。街の宿へ行こう。\");\n    }\n    return;\n  }\n\n  if (action === \"talk\") {\n    if (nearestNpc) {\n      const aff = state.player.relationship[nearestNpc.name] || 0;\n      state.player.relationship[nearestNpc.name] = aff + 8;\n      state.player.reputation += 2;\n      gainSkill(\"social\", 1);\n      addLog(`${nearestNpc.name}と話した。${nearestNpc.name}の好感度が上がった。`);\n      if (nearestNpc.romance && (state.player.relationship[nearestNpc.name] || 0) >= 60) {\n        addLog(`${nearestNpc.name}は少しだけあなたを意識しているようだ。`);\n      }\n    } else {\n      addLog(\"近くに話せる相手がいない。\");\n    }\n    return;\n  }\n\n  if (action === \"farm\") {\n    if (currentLocation === \"農場\") {\n      influencePlayerStats(18, 16, 4, 0);\n      const gain = 1 + Math.floor(state.player.skill.farming / 3);\n      state.player.inventory.wheat += gain;\n      gainSkill(\"farming\", 1);\n      state.player.reputation += 1;\n      addLog(`農業で${gain}個の小麦を収穫した。`);\n    } else {\n      addLog(\"農場で作業しよう。\");\n    }\n    return;\n  }\n\n  if (action === \"fish\") {\n    if (currentLocation === \"海岸\") {\n      influencePlayerStats(14, 10, 2, 0);\n      const gain = 1 + Math.floor(state.player.skill.fishing / 3);\n      state.player.inventory.fish += gain;\n      gainSkill(\"fishing\", 1);\n      addLog(`釣りで${gain}匹の魚を手に入れた。`);\n    } else {\n      addLog(\"海岸で釣りをしよう。\");\n    }\n    return;\n  }\n\n  if (action === \"hunt\") {\n    if (currentLocation === \"森\" || currentLocation === \"遺跡\") {\n      influencePlayerStats(20, 18, -2, 0);\n      const gain = 1 + Math.floor(state.player.skill.combat / 3);\n      state.player.inventory.meat += gain;\n      gainSkill(\"combat\", 1);\n      state.player.reputation += 2;\n      addLog(`狩猟で${gain}個の肉を手に入れた。`);\n    } else {\n      addLog(\"森か遺跡で狩りをしよう。\");\n    }\n    return;\n  }\n\n  if (action === \"work\") {\n    if (currentLocation === \"街\" || currentLocation === \"役所\") {\n      const salaryBase = 18 + state.player.skill.work * 7;\n      state.player.money += salaryBase;\n      influencePlayerStats(18, 12, 0, 0);\n      gainSkill(\"work\", 1);\n      state.player.job = \"村人の仕事人\";\n      addLog(`町の仕事をこなした。報酬として${salaryBase}円を受け取った。`);\n    } else {\n      addLog(\"街の仕事場に戻ろう。\");\n    }\n    return;\n  }\n\n  if (action === \"court\") {\n    if (currentLocation === \"街\" || currentLocation === \"役所\") {\n      const judgeRoll = Math.random();\n      if (judgeRoll > 0.45) {\n        state.player.reputation += 8;\n        state.player.money += 30;\n        addLog(\"裁判に勝利した。評判が上がり、報酬を得た。\");\n      } else {\n        state.player.reputation = Math.max(0, state.player.reputation - 3);\n        state.player.money = Math.max(0, state.player.money - 20);\n        addLog(\"裁判に負けた。少し評判が落ちたが、次に活かそう。\");\n      }\n    } else {\n      addLog(\"役所で裁判の儀式に参加しよう。\");\n    }\n    return;\n  }\n\n  if (action === \"adventure\") {\n    if (currentLocation === \"森\" || currentLocation === \"遺跡\") {\n      const fortune = Math.random();\n      influencePlayerStats(16, 14, -4, 0);\n      if (fortune > 0.5) {\n        state.player.inventory.crystal += 1;\n        state.player.money += 65;\n        state.player.reputation += 5;\n        addLog(\"冒険で古代水晶を発見した。価値ある財宝だ。\");\n      } else {\n        state.player.inventory.stone += 2;\n        state.player.money += 25;\n        addLog(\"小さな洞窟を探索し、石材と経験を得た。\");\n      }\n      gainSkill(\"combat\", 1);\n    } else {\n      addLog(\"森や遺跡に行って冒険しよう。\");\n    }\n    return;\n  }\n\n  addLog(\"まだ行動を決められていない。\");\n}\n\nfunction tryInteract() {\n  const nearestNpc = getNearestNpc();\n\n  if (nearestNpc) {\n    const relation = state.player.relationship[nearestNpc.name] || 0;\n    if (nearestNpc.role === \"mayor\") {\n      if (relation >= 50 && state.player.money >= 30 && !state.player.marriedTo) {\n        state.player.marriedTo = nearestNpc.name;\n        state.player.money -= 30;\n        state.player.reputation += 15;\n        addLog(`${nearestNpc.name}と結婚した。村の新しい生活が始まる。`);\n        return;\n      }\n      addLog(`${nearestNpc.name}に会話をして、村の運営や生活のことを相談した。`);\n      state.player.relationship[nearestNpc.name] = relation + 5;\n      gainSkill(\"social\", 1);\n      return;\n    }\n\n    if (nearestNpc.romance && !state.player.marriedTo) {\n      const aff = state.player.relationship[nearestNpc.name] || 0;\n      state.player.relationship[nearestNpc.name] = aff + 12;\n      if (aff >= 60) {\n        addLog(`${nearestNpc.name}とはかなり親しくなった。結婚を考えてもいいかもしれない。`);\n      } else {\n        addLog(`${nearestNpc.name}と会話した。少しずつ距離が縮まっている。`);\n      }\n      gainSkill(\"social\", 1);\n      return;\n    }\n\n    state.player.relationship[nearestNpc.name] = (state.player.relationship[nearestNpc.name] || 0) + 6;\n    addLog(`${nearestNpc.name}と雑談した。心の余裕ができた。`);\n    return;\n  }\n\n  const location = getLocationName(state.player.x, state.player.y);\n  if (location === \"農場\") handlePlayerAction(\"farm\");\n  else if (location === \"海岸\") handlePlayerAction(\"fish\");\n  else if (location === \"森\" || location === \"遺跡\") handlePlayerAction(\"hunt\");\n  else if (location === \"街\" || location === \"役所\") handlePlayerAction(\"work\");\n  else if (location === \"野原\") addLog(\"何も起きていない。村に戻ろう。\");\n  else addLog(\"ここで何かできる気がする。\");\n}\n\nfunction onResize() {\n  const width = gameRoot.clientWidth;\n  const height = gameRoot.clientHeight;\n  if (camera) {\n    camera.aspect = width / height;\n    camera.updateProjectionMatrix();\n  }\n  if (renderer) {\n    renderer.setSize(width, height);\n  }\n}\n\nfunction animate() {\n  requestAnimationFrame(animate);\n  const now = performance.now();\n  const dt = Math.min((now - lastTime) / 1000 || 0.016, 0.05);\n  lastTime = now;\n\n  if (!scene || !renderer) return;\n\n  applyMovement(dt);\n  advanceTime(dt);\n\n  if (keys.KeyE) {\n    tryInteract();\n    keys.KeyE = false;\n  }\n\n  if (keys.KeyQ) {\n    handlePlayerAction(\"talk\");\n    keys.KeyQ = false;\n  }\n\n  if (keys.KeyS) {\n    if (!keys.sUsed) {\n      saveGame();\n      addLog(\"手動保存をした。\");\n      keys.sUsed = true;\n    }\n  } else {\n    keys.sUsed = false;\n  }\n\n  update3DState();\n  updateUI();\n  updateCamera();\n  renderer.render(scene, camera);\n}\n\nfunction bindButtons() {\n  document.querySelectorAll(\"[data-action]\").forEach((button) => {\n    button.addEventListener(\"click\", () => {\n      const action = button.dataset.action;\n      if (action === \"save\") {\n        saveGame();\n        addLog(\"保存した。\");\n        return;\n      }\n      handlePlayerAction(action);\n    });\n  });\n}\n\nwindow.addEventListener(\"resize\", onResize);\n\nwindow.addEventListener(\"keydown\", (event) => {\n  const key = event.key.toLowerCase();\n  const code = event.code;\n  keys[key] = true;\n  keys[code] = true;\n  if ([\"ArrowUp\", \"ArrowDown\", \"ArrowLeft\", \"ArrowRight\", \"KeyW\", \"KeyA\", \"KeyS\", \"KeyD\", \"KeyE\", \"KeyQ\"].includes(code)) {\n    event.preventDefault();\n  }\n});\n\nwindow.addEventListener(\"keyup\", (event) => {\n  const key = event.key.toLowerCase();\n  const code = event.code;\n  keys[key] = false;\n  keys[code] = false;\n});\n\ngameRoot.addEventListener(\"pointerdown\", () => {\n  pointerDown = true;\n});\n\ngameRoot.addEventListener(\"pointerup\", () => {\n  pointerDown = false;\n});\n\ngameRoot.addEventListener(\"pointerleave\", () => {\n  pointerDown = false;\n});\n\ngameRoot.addEventListener(\"pointermove\", (event) => {\n  if (!pointerDown) return;\n  cameraYaw -= event.movementX * 0.005;\n  cameraPitch = clamp(cameraPitch - event.movementY * 0.002, 0.2, 1.5);\n});\n\n// 初期化\nwindow.addEventListener(\"load\", () => {\n  createWorldScene();\n  bindButtons();\n  updateUI();\n  renderLog();\n  onResize();\n  requestAnimationFrame(animate);\n});\n\n// ページロード時の初期化\nif (document.readyState === \"loading\") {\n  document.addEventListener(\"DOMContentLoaded\", () => {\n    createWorldScene();\n    bindButtons();\n    updateUI();\n    renderLog();\n    onResize();\n    requestAnimationFrame(animate);\n  });\n} else {\n  createWorldScene();\n  bindButtons();\n  updateUI();\n  renderLog();\n  onResize();\n  requestAnimationFrame(animate);\n}\n
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatTime(totalMinutes) {
+  const hour = Math.floor(totalMinutes / 60) % 24;
+  const minute = totalMinutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function getSeasonFromDay(day) {
+  return seasonNames[(day - 1) % 4];
+}
+
+function getLocationName(x, y) {
+  for (const zone of Object.values(zoneDefs)) {
+    if (x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h) {
+      return zone.label;
+    }
+  }
+  return "野原";
+}
+
+function getNearestNpc() {
+  let nearest = null;
+  let nearestDist = Infinity;
+
+  for (const npc of state.npcs) {
+    const dx = npc.x - state.player.x;
+    const dy = npc.y - state.player.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < nearestDist && dist < 80) {
+      nearest = npc;
+      nearestDist = dist;
+    }
+  }
+
+  return nearest;
+}
+
+function addLog(message) {
+  logs.unshift(message);
+  if (logs.length > 12) logs.pop();
+  renderLog();
+}
+
+function renderLog() {
+  ui.log.innerHTML = logs
+    .slice(0, 12)
+    .map((entry) => `<div class="log-entry">${entry}</div>`)
+    .join("");
+}
+
+function updateUI() {
+  ui.playerName.textContent = state.player.name;
+  ui.playerJob.textContent = state.player.job;
+  ui.day.textContent = `${state.player.day}日目`;
+  ui.time.textContent = formatTime(state.player.time);
+  ui.money.textContent = `${state.player.money}`;
+  ui.hp.textContent = `${Math.round(state.player.health)}`;
+  ui.energy.textContent = `${Math.round(state.player.energy)}`;
+  ui.hunger.textContent = `${Math.round(state.player.hunger)}`;
+  ui.reputation.textContent = `${state.player.reputation}`;
+
+  ui.skill.farming.textContent = state.player.skill.farming;
+  ui.skill.fishing.textContent = state.player.skill.fishing;
+  ui.skill.combat.textContent = state.player.skill.combat;
+  ui.skill.social.textContent = state.player.skill.social;
+  ui.skill.work.textContent = state.player.skill.work;
+
+  const inventoryHtml = Object.entries(itemLabels)
+    .map(([key, label]) => `
+      <div class="inventory-item">
+        <span class="label">${label}</span>
+        <strong>${state.player.inventory[key] || 0}</strong>
+      </div>
+    `)
+    .join("");
+  ui.inventory.innerHTML = inventoryHtml;
+
+  const relationships = Object.entries(state.player.relationship)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, affection]) => {
+      const npc = state.npcs.find((n) => n.name === name);
+      const tag = npc && npc.role === "romance" ? "恋人" : "友達";
+      return `
+        <div class="relationship-row">
+          <span>${name}</span>
+          <span class="affinity">${affection} ${tag}</span>
+        </div>
+      `;
+    })
+    .join("");
+
+  ui.relationshipList.innerHTML = relationships || '<div class="relationship-row"><span>まだ誰もいません</span></div>';
+
+  const currentLocation = getLocationName(state.player.x, state.player.y);
+  ui.locationBadge.textContent = currentLocation;
+  ui.seasonBadge.textContent = getSeasonFromDay(state.player.day);
+}
+
+function gainSkill(skillName, amount = 1) {
+  state.player.skill[skillName] = (state.player.skill[skillName] || 1) + amount;
+}
+
+function influencePlayerStats(energyCost, hungerCost, healthDelta, moneyDelta) {
+  state.player.energy = clamp(state.player.energy - energyCost, 0, 100);
+  state.player.hunger = clamp(state.player.hunger - hungerCost, 0, 100);
+  state.player.health = clamp(state.player.health + healthDelta, 0, 100);
+  state.player.money = Math.max(0, state.player.money + moneyDelta);
+}
+
+function advanceTime(dt) {
+  state.player.time += dt * 60;
+  if (state.player.time >= 24 * 60) {
+    state.player.time -= 24 * 60;
+    state.player.day += 1;
+    addLog("<strong>新しい日</strong> が始まった。");
+  }
+
+  state.player.hunger = clamp(state.player.hunger - dt * 2.2, 0, 100);
+  state.player.energy = clamp(state.player.energy - dt * 1.5, 0, 100);
+
+  if (state.player.hunger <= 10) {
+    state.player.health = clamp(state.player.health - dt * 5, 0, 100);
+  }
+  if (state.player.energy <= 10) {
+    state.player.health = clamp(state.player.health - dt * 2, 0, 100);
+  }
+
+  if (state.player.health <= 0) {
+    state.player.health = 100;
+    state.player.energy = 60;
+    state.player.hunger = 80;
+    state.player.money = Math.max(0, state.player.money - 30);
+    addLog("<strong>体調が悪くなった。</strong> 宿で休��で回復した。");
+  }
+}
+
+function createCharacterMesh(color, isPlayer = false) {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.9, 1.8, 4, 10),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.2 })
+  );
+  body.position.y = 1.7;
+  group.add(body);
+
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.7, 16, 16),
+    new THREE.MeshStandardMaterial({ color: 0xf5d7b4, roughness: 0.9 })
+  );
+  head.position.y = 3.2;
+  group.add(head);
+
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(1.5, 20),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2 })
+  );
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.05;
+  group.add(shadow);
+
+  if (isPlayer) {
+    group.userData.isPlayer = true;
+  }
+
+  return group;
+}
+
+function init3D() {
+  if (!gameRoot) return;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x081f2d);
+  scene.fog = new THREE.Fog(0x081f2d, 80, 230);
+
+  camera = new THREE.PerspectiveCamera(60, gameRoot.clientWidth / gameRoot.clientHeight, 0.1, 4000);
+  camera.position.set(22, 18, 22);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(gameRoot.clientWidth, gameRoot.clientHeight);
+  renderer.setClearColor(0x081f2d, 1);
+  gameRoot.innerHTML = "";
+  gameRoot.appendChild(renderer.domElement);
+
+  worldGroup = new THREE.Group();
+  scene.add(worldGroup);
+
+  const hemi = new THREE.HemisphereLight(0xdff5ff, 0x183f35, 1.3);
+  scene.add(hemi);
+
+  const sun = new THREE.DirectionalLight(0xffffff, 1.15);
+  sun.position.set(100, 120, 40);
+  scene.add(sun);
+
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(5000, 5000),
+    new THREE.MeshStandardMaterial({ color: 0x3d9d5d, roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = 0;
+  worldGroup.add(ground);
+
+  const townFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(420, 1, 350),
+    new THREE.MeshStandardMaterial({ color: 0x7fa7c2, roughness: 0.95 })
+  );
+  townFloor.position.set(zoneDefs.town.x + zoneDefs.town.w / 2, 0.5, zoneDefs.town.y + zoneDefs.town.h / 2);
+  worldGroup.add(townFloor);
+
+  const farmFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(520, 1, 340),
+    new THREE.MeshStandardMaterial({ color: 0xc4d76d, roughness: 1 })
+  );
+  farmFloor.position.set(zoneDefs.farm.x + zoneDefs.farm.w / 2, 0.5, zoneDefs.farm.y + zoneDefs.farm.h / 2);
+  worldGroup.add(farmFloor);
+
+  const forestFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(620, 1, 620),
+    new THREE.MeshStandardMaterial({ color: 0x2a703d, roughness: 1 })
+  );
+  forestFloor.position.set(zoneDefs.forest.x + zoneDefs.forest.w / 2, 0.5, zoneDefs.forest.y + zoneDefs.forest.h / 2);
+  worldGroup.add(forestFloor);
+
+  const beachFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(670, 1, 420),
+    new THREE.MeshStandardMaterial({ color: 0x5dc1d9, roughness: 0.85 })
+  );
+  beachFloor.position.set(zoneDefs.beach.x + zoneDefs.beach.w / 2, 0.3, zoneDefs.beach.y + zoneDefs.beach.h / 2);
+  worldGroup.add(beachFloor);
+
+  const ruinsFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(500, 1, 500),
+    new THREE.MeshStandardMaterial({ color: 0x665a55, roughness: 1 })
+  );
+  ruinsFloor.position.set(zoneDefs.ruins.x + zoneDefs.ruins.w / 2, 0.5, zoneDefs.ruins.y + zoneDefs.ruins.h / 2);
+  worldGroup.add(ruinsFloor);
+
+  // zone outlines
+  const zoneMaterial = new THREE.MeshStandardMaterial({ color: 0x9be5ff, transparent: true, opacity: 0.12 });
+  for (const zone of Object.values(zoneDefs)) {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(zone.w, 4, zone.h), zoneMaterial.clone());
+    box.position.set(zone.x + zone.w / 2, 2, zone.y + zone.h / 2);
+    worldGroup.add(box);
+  }
+
+  // houses
+  const houseMaterial = new THREE.MeshStandardMaterial({ color: 0xf2dfb1, roughness: 0.9 });
+  for (const house of [
+    { x: 1040, z: 820, s: 18 },
+    { x: 1190, z: 840, s: 16 },
+    { x: 910, z: 980, s: 18 },
+    { x: 1320, z: 980, s: 14 },
+  ]) {
+    const h = new THREE.Mesh(new THREE.BoxGeometry(house.s, 12, house.s), houseMaterial);
+    h.position.set(house.x, 6, house.z);
+    worldGroup.add(h);
+  }
+
+  playerMesh = createCharacterMesh(0x68f0ff, true);
+  playerMesh.position.set(state.player.x, 0, state.player.y);
+  worldGroup.add(playerMesh);
+
+  for (const npc of state.npcs) {
+    const p = createCharacterMesh(npc.color, false);
+    p.position.set(npc.x, 0, npc.y);
+    worldGroup.add(p);
+    npcMeshes.set(npc.id, p);
+  }
+}
+
+function saveGame() {
+  localStorage.setItem(
+    SAVE_KEY,
+    JSON.stringify({
+      player: state.player,
+      npcs: state.npcs,
+      logs,
+    })
+  );
+}
+
+function loadState() {
+  const saved = localStorage.getItem(SAVE_KEY);
+  if (!saved) {
+    return {
+      player: defaultPlayer(),
+      npcs: npcTemplate.map((npc) => ({ ...npc, affection: npc.affinity })),
+      logs: ["新しい冒険が始まった。自由に生きろ。"],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(saved);
+    return {
+      player: { ...defaultPlayer(), ...parsed.player },
+      npcs: parsed.npcs || npcTemplate.map((npc) => ({ ...npc, affection: npc.affinity })),
+      logs: parsed.logs || ["新しい冒険が始まった。自由に生きろ。"],
+    };
+  } catch (error) {
+    return {
+      player: defaultPlayer(),
+      npcs: npcTemplate.map((npc) => ({ ...npc, affection: npc.affinity })),
+      logs: ["新しい冒険が始まった。自由に生きろ。"],
+    };
+  }
+}
+
+function update3DState() {
+  if (!playerMesh) return;
+
+  playerMesh.position.set(state.player.x, 0, state.player.y);
+  playerMesh.rotation.y = state.player.rotationY || 0;
+
+  for (const npc of state.npcs) {
+    const mesh = npcMeshes.get(npc.id);
+    if (!mesh) continue;
+    mesh.position.set(npc.x, 0, npc.y);
+  }
+}
+
+function updateCamera() {
+  if (!camera || !playerMesh) return;
+
+  const target = new THREE.Vector3(state.player.x, 1.5, state.player.y);
+  const radius = 10;
+  const offsetX = Math.sin(cameraYaw + Math.PI) * radius;
+  const offsetZ = Math.cos(cameraYaw + Math.PI) * radius;
+  const offsetY = 5 + Math.sin(cameraPitch) * 5;
+
+  const desired = new THREE.Vector3(target.x + offsetX, offsetY, target.z + offsetZ);
+  camera.position.lerp(desired, 0.08);
+  camera.lookAt(target.x, target.y + 1.6, target.z);
+}
+
+function applyMovement(dt) {
+  let moveX = 0;
+  let moveY = 0;
+
+  if (keys.ArrowLeft || keys.a || keys.KeyA) moveX -= 1;
+  if (keys.ArrowRight || keys.d || keys.KeyD) moveX += 1;
+  if (keys.ArrowUp || keys.w || keys.KeyW) moveY -= 1;
+  if (keys.ArrowDown || keys.s || keys.KeyS) moveY += 1;
+
+  if (moveX !== 0 || moveY !== 0) {
+    const length = Math.hypot(moveX, moveY) || 1;
+    const dx = (moveX / length) * state.player.speed * dt;
+    const dy = (moveY / length) * state.player.speed * dt;
+
+    state.player.x = clamp(state.player.x + dx, 40, world.width - 40);
+    state.player.y = clamp(state.player.y + dy, 40, world.height - 40);
+    state.player.rotationY = Math.atan2(dx, dy);
+    cameraYaw = state.player.rotationY;
+  }
+}
+
+function handleAction(action) {
+  const location = getLocationName(state.player.x, state.player.y);
+  const nearest = getNearestNpc();
+
+  if (action === "save") {
+    saveGame();
+    addLog("<strong>保存</strong>した。次に続けられる。");
+    return;
+  }
+
+  if (action === "rest") {
+    if (location === "街" || location === "役所" || location === "宿") {
+      state.player.health = clamp(state.player.health + 30, 0, 100);
+      state.player.energy = clamp(state.player.energy + 45, 0, 100);
+      state.player.hunger = clamp(state.player.hunger + 25, 0, 100);
+      state.player.money = Math.max(0, state.player.money - 10);
+      addLog("宿で休んだ。体力と気力が回復した。");
+    } else {
+      addLog("ここでは休めない。街の宿へ行こう。");
+    }
+    return;
+  }
+
+  if (action === "talk") {
+    if (nearest) {
+      const aff = state.player.relationship[nearest.name] || 0;
+      state.player.relationship[nearest.name] = aff + 8;
+      state.player.reputation += 2;
+      gainSkill("social", 1);
+      addLog(`${nearest.name}と話した。${nearest.name}の好感度が上がった。`);
+      if (nearest.romance && (state.player.relationship[nearest.name] || 0) >= 60) {
+        addLog(`${nearest.name}は少しだけあなたを意識しているようだ。`);
+      }
+    } else {
+      addLog("近くに話せる相手がいない。");
+    }
+    return;
+  }
+
+  if (action === "farm") {
+    if (location === "農場") {
+      influencePlayerStats(18, 16, 4, 0);
+      const gain = 1 + Math.floor(state.player.skill.farming / 3);
+      state.player.inventory.wheat += gain;
+      gainSkill("farming", 1);
+      state.player.reputation += 1;
+      addLog(`農業で${gain}個の小麦を収穫した。`);
+    } else {
+      addLog("農場で作業しよう。");
+    }
+    return;
+  }
+
+  if (action === "fish") {
+    if (location === "海岸") {
+      influencePlayerStats(14, 10, 2, 0);
+      const gain = 1 + Math.floor(state.player.skill.fishing / 3);
+      state.player.inventory.fish += gain;
+      gainSkill("fishing", 1);
+      addLog(`釣りで${gain}匹の魚を手に入れた。`);
+    } else {
+      addLog("海岸で釣りをしよう。");
+    }
+    return;
+  }
+
+  if (action === "hunt") {
+    if (location === "森" || location === "遺跡") {
+      influencePlayerStats(20, 18, -2, 0);
+      const gain = 1 + Math.floor(state.player.skill.combat / 3);
+      state.player.inventory.meat += gain;
+      gainSkill("combat", 1);
+      state.player.reputation += 2;
+      addLog(`狩猟で${gain}個の肉を手に入れた。`);
+    } else {
+      addLog("森か遺跡で狩りをしよう。");
+    }
+    return;
+  }
+
+  if (action === "work") {
+    if (location === "街" || location === "役所") {
+      const salaryBase = 18 + state.player.skill.work * 7;
+      state.player.money += salaryBase;
+      influencePlayerStats(18, 12, 0, 0);
+      gainSkill("work", 1);
+      state.player.job = "村人の仕事人";
+      addLog(`町の仕事をこなした。報酬として${salaryBase}円を受け取った。`);
+    } else {
+      addLog("街の仕事場に戻ろう。");
+    }
+    return;
+  }
+
+  if (action === "court") {
+    if (location === "街" || location === "役所") {
+      const judgeRoll = Math.random();
+      if (judgeRoll > 0.45) {
+        state.player.reputation += 8;
+        state.player.money += 30;
+        addLog("裁判に勝利した。評判が上がり、報酬を得た。");
+      } else {
+        state.player.reputation = Math.max(0, state.player.reputation - 3);
+        state.player.money = Math.max(0, state.player.money - 20);
+        addLog("裁判に負けた。少し評判が落ちたが、次に活かそう。");
+      }
+    } else {
+      addLog("役所で裁判の儀式に参加しよう。");
+    }
+    return;
+  }
+
+  if (action === "adventure") {
+    if (location === "森" || location === "遺跡") {
+      const fortune = Math.random();
+      influencePlayerStats(16, 14, -4, 0);
+      if (fortune > 0.5) {
+        state.player.inventory.crystal += 1;
+        state.player.money += 65;
+        state.player.reputation += 5;
+        addLog("冒険で古代水晶を発見した。価値ある財宝だ。");
+      } else {
+        state.player.inventory.stone += 2;
+        state.player.money += 25;
+        addLog("小さな洞窟を探索し、石材と経験を得た。");
+      }
+      gainSkill("combat", 1);
+    } else {
+      addLog("森や遺跡に行って冒険しよう。");
+    }
+    return;
+  }
+
+  addLog("まだ行動を決められていない。");
+}
+
+function interact() {
+  const nearest = getNearestNpc();
+
+  if (nearest) {
+    const relation = state.player.relationship[nearest.name] || 0;
+    if (nearest.role === "mayor") {
+      if (relation >= 50 && state.player.money >= 30 && !state.player.marriedTo) {
+        state.player.marriedTo = nearest.name;
+        state.player.money -= 30;
+        state.player.reputation += 15;
+        addLog(`${nearest.name}と結婚した。村の新しい生活が始まる。`);
+        return;
+      }
+      addLog(`${nearest.name}に会話をして、村の運営や生活のことを相談した。`);
+      state.player.relationship[nearest.name] = relation + 5;
+      gainSkill("social", 1);
+      return;
+    }
+
+    if (nearest.romance && !state.player.marriedTo) {
+      const aff = state.player.relationship[nearest.name] || 0;
+      state.player.relationship[nearest.name] = aff + 12;
+      if (aff >= 60) {
+        addLog(`${nearest.name}とはかなり親しくなった。結婚を考えてもいいかもしれない。`);
+      } else {
+        addLog(`${nearest.name}と会話した。少しずつ距離が縮まっている。`);
+      }
+      gainSkill("social", 1);
+      return;
+    }
+
+    state.player.relationship[nearest.name] = (state.player.relationship[nearest.name] || 0) + 6;
+    addLog(`${nearest.name}と雑談した。心の余裕ができた。`);
+    return;
+  }
+
+  const location = getLocationName(state.player.x, state.player.y);
+  if (location === "農場") handleAction("farm");
+  else if (location === "海岸") handleAction("fish");
+  else if (location === "森" || location === "遺跡") handleAction("hunt");
+  else if (location === "街" || location === "役所") handleAction("work");
+  else if (location === "野原") addLog("何も起きていない。村に戻ろう。");
+  else addLog("ここで何かできる気がする。");
+}
+
+function bindEvents() {
+  document.querySelectorAll("[data-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.action;
+      if (action === "save") {
+        saveGame();
+        addLog("保存した。");
+        return;
+      }
+      handleAction(action);
+    });
+  });
+
+  window.addEventListener("keydown", (event) => {
+    const keyName = event.key.toLowerCase();
+    const code = event.code;
+    keys[keyName] = true;
+    keys[code] = true;
+
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyA", "KeyS", "KeyD", "KeyE", "KeyQ"].includes(code)) {
+      event.preventDefault();
+    }
+
+    if (code === "KeyE") {
+      interact();
+      keys.KeyE = false;
+    }
+
+    if (code === "KeyQ") {
+      handleAction("talk");
+      keys.KeyQ = false;
+    }
+
+    if (code === "KeyS") {
+      saveGame();
+      addLog("手動保存をした。");
+    }
+  });
+
+  window.addEventListener("keyup", (event) => {
+    const keyName = event.key.toLowerCase();
+    const code = event.code;
+    keys[keyName] = false;
+    keys[code] = false;
+  });
+
+  gameRoot.addEventListener("pointerdown", (event) => {
+    pointerDown = true;
+    gameRoot.setPointerCapture(event.pointerId);
+  });
+
+  gameRoot.addEventListener("pointerup", (event) => {
+    pointerDown = false;
+    gameRoot.releasePointerCapture(event.pointerId);
+  });
+
+  gameRoot.addEventListener("pointerleave", () => {
+    pointerDown = false;
+  });
+
+  gameRoot.addEventListener("pointermove", (event) => {
+    if (!pointerDown) return;
+    cameraYaw -= event.movementX * 0.005;
+    cameraPitch = clamp(cameraPitch - event.movementY * 0.002, 0.2, 1.5);
+  });
+
+  window.addEventListener("resize", () => {
+    if (!camera || !renderer) return;
+    camera.aspect = gameRoot.clientWidth / gameRoot.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(gameRoot.clientWidth, gameRoot.clientHeight);
+  });
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const now = performance.now();
+  const dt = Math.min((now - lastTime) / 1000 || 0.016, 0.032);
+  lastTime = now;
+
+  if (scene && renderer && camera) {
+    applyMovement(dt);
+    advanceTime(dt);
+    update3DState();
+    updateUI();
+    updateCamera();
+    renderer.render(scene, camera);
+  }
+}
+
+function start() {
+  init3D();
+  bindEvents();
+  updateUI();
+  renderLog();
+  requestAnimationFrame(animate);
+}
+
+window.addEventListener("load", start);
+if (document.readyState !== "loading") {
+  start();
+}
