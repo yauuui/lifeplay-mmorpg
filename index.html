@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- START SCREEN -->
     <div id="startScreen" class="screen active">
       <div class="screen-panel">
         <div class="screen-header">
@@ -50,15 +51,17 @@
       </div>
     </div>
 
-    <div id="gameShell" class="game-shell hidden">
+    <!-- GAME SHELL -->
+    <div class="game-shell hidden">
+      <!-- TOP HUD -->
       <div class="top-hud">
         <div class="hud-left">
-          <div class="chip">街</div>
-          <div class="chip">春</div>
+          <div class="chip" id="location-chip">街</div>
+          <div class="chip" id="season-chip">春</div>
         </div>
         <div class="hud-center">
           <div class="mini-map-wrap">
-            <canvas id="miniMap" width="170" height="110"></canvas>
+            <canvas id="miniMap" width="200" height="120"></canvas>
           </div>
         </div>
         <div class="hud-right">
@@ -68,9 +71,11 @@
         </div>
       </div>
 
+      <!-- GAME ROOT -->
       <div id="gameRoot"></div>
 
-      <div class="status-panel">
+      <!-- BOTTOM PANELS -->
+      <div class="bottom-panels">
         <div class="panel-block slim">
           <h2>ステータス</h2>
           <div class="stat-grid">
@@ -96,23 +101,24 @@
             <div><span>仕事</span><strong id="skill-work">1</strong></div>
           </div>
         </div>
+
+        <div class="panel-block slim">
+          <h2>インベントリ</h2>
+          <div class="inventory" id="inventory"></div>
+        </div>
+
+        <div class="panel-block slim">
+          <h2>関係</h2>
+          <div id="relationship-list" class="relationship-list"></div>
+        </div>
+
+        <div class="panel-block slim">
+          <h2>ログ</h2>
+          <div id="log-panel" class="log-list"></div>
+        </div>
       </div>
 
-      <div class="inventory-panel panel-block slim">
-        <h2>インベントリ</h2>
-        <div class="inventory" id="inventory"></div>
-      </div>
-
-      <div class="relationship-panel panel-block slim">
-        <h2>関係</h2>
-        <div id="relationship-list" class="relationship-list"></div>
-      </div>
-
-      <div class="log-panel panel-block">
-        <h2>ログ</h2>
-        <div id="log-panel" class="log-list"></div>
-      </div>
-
+      <!-- ACTION BAR -->
       <div class="action-bar">
         <button data-action="farm">農業</button>
         <button data-action="fish">釣り</button>
@@ -126,7 +132,6 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script src="game.js"></script>
   </body>
 </html>
