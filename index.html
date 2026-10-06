@@ -2,136 +2,156 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LifePlay: Open World Life MMO</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="description" content="LifePlay - ブラウザで遊べる3Dオープンワールド生活RPG" />
+    <title>LifePlay</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <!-- START SCREEN -->
-    <div id="startScreen" class="screen active">
-      <div class="screen-panel">
-        <div class="screen-header">
-          <span class="eyebrow">OPEN WORLD LIFE MMO</span>
-          <h1>LifePlay</h1>
+    <!-- ===== タイトル ===== -->
+    <section id="screen-title" class="screen title-screen hidden">
+      <div class="title-bg"></div>
+      <div class="title-card">
+        <span class="eyebrow">OPEN WORLD LIFE RPG</span>
+        <h1>LifePlay</h1>
+        <p class="tagline">町で働き、畑を耕し、海で釣り、森で冒険する。<br />あなただけのもう一つの暮らし。</p>
+        <div class="title-buttons">
+          <button id="btn-new" class="primary big">はじめから</button>
+          <button id="btn-continue" class="big">つづきから</button>
         </div>
+        <p class="hint">PC: WASD移動 / マウスで視点　スマホ: 左スティック移動 / 右側ドラッグで視点</p>
+      </div>
+    </section>
 
+    <!-- ===== キャラクター作成 ===== -->
+    <section id="screen-create" class="screen create-screen hidden">
+      <div class="create-layout">
+        <div class="create-preview">
+          <div id="preview"></div>
+          <p class="hint">ドラッグで回転</p>
+        </div>
         <div class="create-form">
-          <label>
+          <h2>キャラクター作成</h2>
+          <label class="field">
             <span>名前</span>
-            <input id="playerNameInput" type="text" maxlength="12" value="ユウ" />
+            <input id="name-input" type="text" maxlength="10" value="ユウ" autocomplete="off" />
           </label>
-
-          <label>
-            <span>職業</span>
-            <select id="jobSelect">
-              <option value="自由人">自由人</option>
-              <option value="農家">農家</option>
-              <option value="漁師">漁師</option>
-              <option value="冒険者">冒険者</option>
-              <option value="商人">商人</option>
-            </select>
-          </label>
-
-          <label>
-            <span>見た目</span>
-            <select id="skinSelect">
-              <option value="#68f0ff">空色</option>
-              <option value="#ff9bf2">ピンク</option>
-              <option value="#ffd166">金色</option>
-              <option value="#8eff9f">草色</option>
-              <option value="#a7d8ff">青白</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="start-buttons">
-          <button id="startButton" class="primary">ゲーム開始</button>
-          <button id="loadButton" class="secondary">続きから</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- GAME SHELL -->
-    <div class="game-shell hidden">
-      <!-- TOP HUD -->
-      <div class="top-hud">
-        <div class="hud-left">
-          <div class="chip" id="location-chip">街</div>
-          <div class="chip" id="season-chip">春</div>
-        </div>
-        <div class="hud-center">
-          <div class="mini-map-wrap">
-            <canvas id="miniMap" width="200" height="120"></canvas>
+          <div class="field">
+            <span>髪型</span>
+            <div class="seg">
+              <button data-style="short">ショート</button>
+              <button data-style="long">ロング</button>
+            </div>
+          </div>
+          <div class="field"><span>髪の色</span><div id="hair-list" class="swatches"></div></div>
+          <div class="field"><span>肌の色</span><div id="skin-list" class="swatches"></div></div>
+          <div class="field"><span>服の色</span><div id="outfit-list" class="swatches"></div></div>
+          <div class="field"><span>職業</span><div id="job-list" class="jobs"></div></div>
+          <div class="create-buttons">
+            <button id="btn-back">戻る</button>
+            <button id="btn-random">おまかせ</button>
+            <button id="btn-start" class="primary">この姿で始める</button>
           </div>
         </div>
-        <div class="hud-right">
-          <span>WASD 移動</span>
-          <span>E 会話</span>
-          <span>S 保存</span>
-        </div>
       </div>
+    </section>
 
-      <!-- GAME ROOT -->
-      <div id="gameRoot"></div>
+    <!-- ===== ゲーム ===== -->
+    <section id="screen-game" class="screen hidden">
+      <div id="game-root"></div>
+      <div id="vignette"></div>
+      <div id="fade"></div>
 
-      <!-- BOTTOM PANELS -->
-      <div class="bottom-panels">
-        <div class="panel-block slim">
-          <h2>ステータス</h2>
-          <div class="stat-grid">
-            <div><span>名前</span><strong id="player-name">ユウ</strong></div>
-            <div><span>職業</span><strong id="player-job">自由人</strong></div>
-            <div><span>日付</span><strong id="day-text">1日目</strong></div>
-            <div><span>時間</span><strong id="time-text">08:00</strong></div>
-            <div><span>お金</span><strong id="money-text">120</strong></div>
-            <div><span>HP</span><strong id="hp-text">100</strong></div>
-            <div><span>元気</span><strong id="energy-text">100</strong></div>
-            <div><span>満腹</span><strong id="hunger-text">100</strong></div>
-            <div><span>名声</span><strong id="reputation-text">0</strong></div>
+      <div id="hud">
+        <!-- 左上: ステータス -->
+        <div class="hud-card status">
+          <div class="who"><b id="hud-name">-</b><span id="hud-job">-</span></div>
+          <div class="bar hp" id="bar-hp"><label>HP</label><div><i></i></div><b>-</b></div>
+          <div class="bar energy" id="bar-energy"><label>ST</label><div><i></i></div><b>-</b></div>
+          <div class="bar hunger" id="bar-hunger"><label>満腹</label><div><i></i></div><b>-</b></div>
+          <div class="money">💰 <b id="hud-money">0</b> G</div>
+        </div>
+
+        <!-- 右上: ミニマップ一体型パネル -->
+        <div class="hud-card mapcard">
+          <div class="map-head">
+            <b id="hud-location">-</b>
+            <span id="hud-time">-</span>
+          </div>
+          <div class="map-wrap" title="M で全体地図">
+            <canvas id="minimap" width="190" height="190"></canvas>
+          </div>
+          <div class="map-foot"><span id="hud-day">-</span><span id="hud-coords"></span></div>
+          <div class="quest-track">
+            <h5>📜 今日の依頼</h5>
+            <ul id="hud-quests"></ul>
           </div>
         </div>
 
-        <div class="panel-block slim">
-          <h2>スキル</h2>
-          <div class="skill-list">
-            <div><span>農業</span><strong id="skill-farming">1</strong></div>
-            <div><span>釣り</span><strong id="skill-fishing">1</strong></div>
-            <div><span>狩猟</span><strong id="skill-combat">1</strong></div>
-            <div><span>交友</span><strong id="skill-social">1</strong></div>
-            <div><span>仕事</span><strong id="skill-work">1</strong></div>
-          </div>
+        <!-- 左下: ログ -->
+        <div class="hud-card log"><div id="log-list"></div></div>
+
+        <!-- 中央: インタラクション -->
+        <div id="prompt" class="hidden"></div>
+        <div id="toast"></div>
+
+        <!-- 下中央: ホットバー -->
+        <div class="hotbar">
+          <button data-hot="interact"><kbd>E</kbd>調べる</button>
+          <button data-hot="attack"><kbd>F</kbd>攻撃</button>
+          <button data-hot="eat"><kbd>1</kbd>食べる</button>
+          <button data-hot="menu"><kbd>I</kbd>メニュー</button>
+          <button data-hot="map"><kbd>M</kbd>地図</button>
+          <button data-hot="save"><kbd>K</kbd>セーブ</button>
         </div>
 
-        <div class="panel-block slim">
-          <h2>インベントリ</h2>
-          <div class="inventory" id="inventory"></div>
-        </div>
-
-        <div class="panel-block slim">
-          <h2>関係</h2>
-          <div id="relationship-list" class="relationship-list"></div>
-        </div>
-
-        <div class="panel-block slim">
-          <h2>ログ</h2>
-          <div id="log-panel" class="log-list"></div>
-        </div>
+        <div id="joystick"><i></i></div>
       </div>
 
-      <!-- ACTION BAR -->
-      <div class="action-bar">
-        <button data-action="farm">農業</button>
-        <button data-action="fish">釣り</button>
-        <button data-action="hunt">狩猟</button>
-        <button data-action="work">仕事</button>
-        <button data-action="talk">会話</button>
-        <button data-action="court">裁判</button>
-        <button data-action="adventure">冒険</button>
-        <button data-action="rest">休む</button>
-        <button data-action="save">保存</button>
+      <!-- メニュー -->
+      <div id="panel-menu" class="panel hidden">
+        <div class="panel-head">
+          <nav class="tabs">
+            <button data-tab="items">持ち物</button>
+            <button data-tab="skills">スキル</button>
+            <button data-tab="people">住人</button>
+            <button data-tab="quests">依頼</button>
+            <button data-tab="help">操作</button>
+            <button data-tab="system">システム</button>
+          </nav>
+          <button class="close" data-close>✕</button>
+        </div>
+        <div id="menu-body" class="panel-body"></div>
       </div>
-    </div>
 
-    <script src="game.js"></script>
+      <!-- 会話 -->
+      <div id="panel-dialog" class="dialog hidden">
+        <div id="dialog-name"></div>
+        <p id="dialog-text"></p>
+        <div id="dialog-options"></div>
+      </div>
+
+      <!-- 建物 -->
+      <div id="panel-building" class="panel hidden">
+        <div class="panel-head"><h3 id="building-name"></h3><button class="close" data-close>✕</button></div>
+        <div id="building-body" class="panel-body"></div>
+      </div>
+
+      <!-- 全体地図 -->
+      <div id="panel-map" class="panel map-panel hidden">
+        <div class="panel-head"><h3>🗺 ワールドマップ</h3><button class="close" data-close>✕</button></div>
+        <canvas id="worldmap" width="640" height="640"></canvas>
+      </div>
+    </section>
+
+    <div id="fatal" class="hidden"><div><h2>起動できませんでした</h2><p></p><button onclick="location.reload()">再読み込み</button></div></div>
+
+    <script src="vendor/three.min.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/characters.js"></script>
+    <script src="js/world.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/main.js"></script>
   </body>
 </html>
