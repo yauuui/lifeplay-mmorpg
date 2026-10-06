@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LifePlay: Open World Life MMO</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar left-panel">
+        <div class="panel-block">
+          <h2>ステータス</h2>
+          <div class="stat-grid">
+            <div><span>名前</span><strong id="player-name">ユウ</strong></div>
+            <div><span>職業</span><strong id="player-job">自由人</strong></div>
+            <div><span>日付</span><strong id="day-text">1日目</strong></div>
+            <div><span>時間</span><strong id="time-text">08:00</strong></div>
+            <div><span>お金</span><strong id="money-text">120</strong></div>
+            <div><span>HP</span><strong id="hp-text">100</strong></div>
+            <div><span>元気</span><strong id="energy-text">100</strong></div>
+            <div><span>満腹</span><strong id="hunger-text">100</strong></div>
+            <div><span>名声</span><strong id="reputation-text">0</strong></div>
+          </div>
+        </div>
+
+        <div class="panel-block">
+          <h2>スキル</h2>
+          <div class="skill-list">
+            <div><span>農業</span><strong id="skill-farming">1</strong></div>
+            <div><span>釣り</span><strong id="skill-fishing">1</strong></div>
+            <div><span>狩猟</span><strong id="skill-combat">1</strong></div>
+            <div><span>交友</span><strong id="skill-social">1</strong></div>
+            <div><span>仕事</span><strong id="skill-work">1</strong></div>
+          </div>
+        </div>
+
+        <div class="panel-block">
+          <h2>インベントリ</h2>
+          <div class="inventory" id="inventory"></div>
+        </div>
+
+        <div class="panel-block">
+          <h2>関係</h2>
+          <div id="relationship-list" class="relationship-list"></div>
+        </div>
+      </aside>
+
+      <main class="center-panel">
+        <div class="hud-top">
+          <div class="mini-badges">
+            <span id="location-badge">街</span>
+            <span id="season-badge">春</span>
+          </div>
+          <div class="controls-tip">移動: WASD / 矢印　・　アクション: E　・　セーブ: S</div>
+        </div>
+
+        <canvas id="gameCanvas" width="980" height="620"></canvas>
+
+        <div class="action-bar">
+          <button data-action="farm">農業</button>
+          <button data-action="fish">釣り</button>
+          <button data-action="hunt">狩猟</button>
+          <button data-action="work">仕事</button>
+          <button data-action="talk">会話</button>
+          <button data-action="court">裁判</button>
+          <button data-action="adventure">冒険</button>
+          <button data-action="rest">休む</button>
+          <button data-action="save">保存</button>
+        </div>
+      </main>
+
+      <aside class="sidebar right-panel">
+        <div class="panel-block">
+          <h2>ログ</h2>
+          <div id="log-panel" class="log-panel"></div>
+        </div>
+      </aside>
+    </div>
+
+    <script src="game.js"></script>
+  </body>
+</html>
